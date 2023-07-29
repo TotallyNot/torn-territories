@@ -1,0 +1,2 @@
+[workspace]
+members = ["torn-territories", "torn-map-tool"]
