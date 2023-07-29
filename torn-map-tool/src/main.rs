@@ -157,14 +157,6 @@ fn load_territory_view(args: TerritoryViewArgs) -> DynamicImage {
 
     let fitted_box = fit_view_box(bbox);
 
-    let mut result: image::RgbaImage = torn_territories::load_map_segment(
-        fitted_box.x,
-        fitted_box.y,
-        fitted_box.width,
-        fitted_box.height,
-    )
-    .convert();
-
     let shapes = torn_territories::render_territories(
         fitted_box,
         HashMap::from([(
@@ -177,9 +169,7 @@ fn load_territory_view(args: TerritoryViewArgs) -> DynamicImage {
         HashMap::new(),
     );
 
-    image::imageops::overlay(&mut result, &shapes, 0, 0);
-
-    DynamicImage::ImageRgba8(result)
+    DynamicImage::ImageRgba8(shapes)
 }
 
 fn main() {

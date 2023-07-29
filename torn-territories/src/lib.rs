@@ -246,7 +246,7 @@ pub fn load_map_segment(x: u32, y: u32, w: u32, h: u32) -> GrayImage {
             (cursor.1 - y) as i64,
         );
 
-        if cursor.0 + TILE_WIDTH > x + w {
+        if cursor.0 + width >= x + w {
             cursor = (x, cursor.1 + height);
         } else {
             cursor.0 += width;
