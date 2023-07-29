@@ -1,8 +1,10 @@
 use std::{collections::HashMap, io::Cursor, ops::Deref, rc::Rc};
 
 use image::{
-    codecs::tiff::TiffDecoder, imageops::replace, ColorType, GenericImageView, GrayImage,
-    ImageDecoder,
+    buffer::ConvertBuffer,
+    codecs::tiff::TiffDecoder,
+    imageops::{overlay, replace},
+    ColorType, GenericImageView, GrayImage, ImageDecoder,
 };
 use resvg::usvg::{self, NodeExt, Rect};
 use rust_embed::RustEmbed;
@@ -111,10 +113,10 @@ pub fn element_for_territory(
 }
 
 pub fn fit_view_box(bbox: Rect) -> image::math::Rect {
-    let x = bbox.x() as u32;
-    let y = bbox.y() as u32;
-    let width = ((bbox.x() + bbox.width()).min(MAP_WIDTH as f32) - bbox.x()) as u32;
-    let height = ((bbox.y() + bbox.height()).min(MAP_HEIGHT as f32) - bbox.y()) as u32;
+    let width = (bbox.width() as u32).min(MAP_WIDTH);
+    let height = (bbox.height() as u32).min(MAP_HEIGHT);
+    let x = (bbox.x() as u32).clamp(0, MAP_WIDTH - width);
+    let y = (bbox.y() as u32).clamp(0, MAP_HEIGHT - height);
 
     image::math::Rect {
         x,
@@ -205,7 +207,14 @@ pub fn render_territories(
         &mut pixmap.as_mut(),
     );
 
-    image::RgbaImage::from_raw(view_port.width, view_port.height, pixmap.take()).unwrap()
+    let shapes =
+        image::RgbaImage::from_raw(view_port.width, view_port.height, pixmap.take()).unwrap();
+    let mut background =
+        load_map_segment(view_port.x, view_port.y, view_port.width, view_port.height).convert();
+
+    overlay(&mut background, &shapes, 0, 0);
+
+    background
 }
 
 pub fn load_map_segment(x: u32, y: u32, w: u32, h: u32) -> GrayImage {
