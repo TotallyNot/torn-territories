@@ -80,6 +80,18 @@ pub fn bbox_for_path(path: &usvg::tiny_skia_path::Path, factor: f32, ar: f32) ->
     }
 }
 
+pub fn colour_from_hex(hex: &str) -> Option<usvg::Color> {
+    if !hex.starts_with('#') || hex.len() != 7 {
+        return None;
+    }
+
+    let r = u8::from_str_radix(&hex[1..=2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[3..=4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[5..=6], 16).ok()?;
+
+    Some(usvg::Color::new_rgb(r, g, b))
+}
+
 pub fn element_for_territory(
     id: &str,
     fill: Option<usvg::Fill>,
