@@ -1,10 +1,7 @@
 use std::{collections::HashMap, io::Write};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use image::{
-    buffer::ConvertBuffer, codecs::png::PngEncoder, DynamicImage, GenericImageView, ImageEncoder,
-    ImageFormat,
-};
+use image::{codecs::png::PngEncoder, DynamicImage, GenericImageView, ImageEncoder, ImageFormat};
 use torn_territories::fit_view_box;
 
 #[derive(Parser)]
@@ -82,7 +79,7 @@ struct TerritoryViewArgs {
     #[arg(long, num_args(0..), value_parser = parse_rendering_instructions)]
     border: Vec<HashMap<String, torn_territories::RenderInstruction>>,
 
-    territory: String,
+    territory: torn_territories::TerritoryId,
 }
 
 fn parse_rendering_instructions(
@@ -151,7 +148,7 @@ fn load_map_segment(args: MapSegmentArgs) -> DynamicImage {
 }
 
 fn load_territory_view(args: TerritoryViewArgs) -> DynamicImage {
-    let path = torn_territories::path_for_territory(&args.territory)
+    let path = torn_territories::path_for_territory(args.territory)
         .unwrap_or_else(|| panic!("Territory with id '{}' does not exist!", args.territory));
     let bbox = torn_territories::bbox_for_path(&path, args.factor, args.aspect_ratio);
 

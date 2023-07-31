@@ -10,6 +10,91 @@ use resvg::usvg::{self, NodeExt, Rect};
 use rust_embed::RustEmbed;
 use svgtypes::SimplePathSegment;
 
+#[derive(Debug, Clone)]
+pub enum TerritoryIdError {
+    InvalidLength(usize),
+    DoesNotExist,
+    InvalidEncoding,
+}
+
+impl std::fmt::Display for TerritoryIdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::InvalidLength(len) => write!(f, "InvalidLength: {len}"),
+            Self::DoesNotExist => write!(f, "ID does not exist"),
+            Self::InvalidEncoding => write!(f, "ID has invalid encoding"),
+        }
+    }
+}
+
+impl std::error::Error for TerritoryIdError {}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TerritoryId([u8; 3]);
+
+impl std::fmt::Debug for TerritoryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        unsafe { write!(f, "TerritoryId({})", std::str::from_utf8_unchecked(&self.0)) }
+    }
+}
+
+impl phf::PhfHash for TerritoryId {
+    fn phf_hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.phf_hash(state)
+    }
+}
+
+impl phf_shared::PhfBorrow<TerritoryId> for TerritoryId {
+    fn borrow(&self) -> &TerritoryId {
+        self
+    }
+}
+
+impl std::str::FromStr for TerritoryId {
+    type Err = TerritoryIdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if !s.is_ascii() {
+            return Err(TerritoryIdError::InvalidEncoding);
+        }
+
+        let bytes = s.as_bytes();
+        if bytes.len() != 3 {
+            return Err(TerritoryIdError::InvalidLength(bytes.len()));
+        }
+
+        let mut id_bytes = [0; 3];
+        id_bytes.copy_from_slice(bytes);
+        let id = Self(id_bytes);
+
+        if !TERRITORY_INFO.contains_key(&id) {
+            Err(TerritoryIdError::DoesNotExist)
+        } else {
+            Ok(id)
+        }
+    }
+}
+
+impl std::fmt::Display for TerritoryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        unsafe { write!(f, "{}", std::str::from_utf8_unchecked(&self.0)) }
+    }
+}
+
+impl TerritoryId {
+    pub fn info(&self) -> &TerritoryInfo {
+        TERRITORY_INFO.get(self).unwrap()
+    }
+}
+
+pub struct TerritoryInfo {
+    pub shape: &'static [svgtypes::SimplePathSegment],
+    pub sector: u8,
+    pub db_id: i32,
+    pub slots: u16,
+    pub neighbors: &'static [TerritoryId],
+}
+
 include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
 
 pub const MAP_WIDTH: u32 = 6_256;
@@ -22,12 +107,12 @@ const TILE_HEIGHT: u32 = 400;
 #[include = "*.tiff"]
 struct MapTiles;
 
-pub fn path_for_territory(id: &str) -> Option<usvg::tiny_skia_path::Path> {
-    let instructions = PATHS.get(id)?;
+pub fn path_for_territory(id: TerritoryId) -> Option<usvg::tiny_skia_path::Path> {
+    let instructions = id.info().shape;
 
     let mut builder = usvg::tiny_skia_path::PathBuilder::new();
 
-    for inst in *instructions {
+    for inst in instructions {
         match inst {
             SimplePathSegment::MoveTo { x, y } => {
                 builder.move_to(*x as f32, *y as f32);
@@ -95,7 +180,7 @@ pub fn colour_from_hex(hex: &str) -> Option<usvg::Color> {
 }
 
 pub fn element_for_territory(
-    id: &str,
+    id: TerritoryId,
     fill: Option<usvg::Fill>,
     stroke: Option<usvg::Stroke>,
 ) -> Option<usvg::Path> {
@@ -134,8 +219,8 @@ pub struct RenderInstruction {
 
 pub fn render_territories(
     view_port: image::math::Rect,
-    fill: HashMap<String, RenderInstruction>,
-    mut stroke: HashMap<String, RenderInstruction>,
+    fill: HashMap<TerritoryId, RenderInstruction>,
+    mut stroke: HashMap<TerritoryId, RenderInstruction>,
 ) -> image::RgbaImage {
     let root = usvg::Node::new(usvg::NodeKind::Group(usvg::Group {
         id: "".to_owned(),
@@ -166,7 +251,7 @@ pub fn render_territories(
             rule: usvg::FillRule::NonZero,
         });
 
-        let path = element_for_territory(id, fill, border).unwrap();
+        let path = element_for_territory(*id, fill, border).unwrap();
         root.append_kind(usvg::NodeKind::Path(path));
     }
 
@@ -182,7 +267,7 @@ pub fn render_territories(
             linejoin: usvg::LineJoin::Miter,
         });
 
-        let path = element_for_territory(&id, None, border).unwrap();
+        let path = element_for_territory(id, None, border).unwrap();
         root.append_kind(usvg::NodeKind::Path(path));
     }
 
@@ -261,8 +346,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test() {
-        let image = super::load_map_segment(MAP_WIDTH - 2000, MAP_HEIGHT - 2000, 2000, 2000);
-        image.save("test.tiff").unwrap();
+    fn test_id() {
+        let _id: TerritoryId = "XOD".parse().unwrap();
     }
 }
