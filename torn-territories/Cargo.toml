@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+serde = ["dep:serde"]
+sqlx = ["dep:sqlx"]
+
 [dependencies]
 image = { version = "0.24.6", default-features = false, features = ["tiff"] }
 phf = "0.11.1"
@@ -12,6 +16,8 @@ phf_shared = "0.11.1"
 resvg = { version = "0.35.0", default-features = false }
 rust-embed = { version = "6.8.1", features = ["include-exclude"] }
 svgtypes = "0.11.0"
+serde = { version = "1", optional = true, default-features = false }
+sqlx = { version = "0.7", optional = true, default-features = false, features = ["postgres"] }
 
 [build-dependencies]
 phf = "0.11.1"

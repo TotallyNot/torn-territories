@@ -81,6 +81,53 @@ impl std::fmt::Display for TerritoryId {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for TerritoryId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let id_string: &str = serde::Deserialize::deserialize(deserializer)?;
+
+        if !id_string.is_ascii() || id_string.as_bytes().len() != 3 {
+            return Err(serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(id_string),
+                &"A valid three letter territory ID",
+            ));
+        }
+
+        let mut id_bytes = [0; 3];
+        id_bytes.copy_from_slice(id_string.as_bytes());
+
+        let id = Self(id_bytes);
+        if !TERRITORY_INFO.contains_key(&id) {
+            return Err(serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(id_string),
+                &"A valid three letter territory ID",
+            ));
+        }
+
+        Ok(id)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for TerritoryId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serde::Serialize::serialize(&self.to_string(), serializer)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl sqlx::Type<sqlx::Postgres> for TerritoryId {
+    fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
+        <String as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
 impl TerritoryId {
     pub fn info(&self) -> &TerritoryInfo {
         TERRITORY_INFO.get(self).unwrap()

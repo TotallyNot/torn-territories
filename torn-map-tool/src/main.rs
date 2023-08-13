@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::Write};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use image::{codecs::png::PngEncoder, DynamicImage, GenericImageView, ImageEncoder, ImageFormat};
-use torn_territories::fit_view_box;
+use torn_territories::{fit_view_box, TerritoryId, TerritoryIdError};
 
 #[derive(Parser)]
 #[command(author, about, version)]
@@ -74,38 +74,22 @@ struct TerritoryViewArgs {
     aspect_ratio: f32,
 
     #[arg(long, num_args(0..), value_parser = parse_rendering_instructions)]
-    fill: Vec<HashMap<String, torn_territories::RenderInstruction>>,
+    fill: Vec<HashMap<TerritoryId, torn_territories::RenderInstruction>>,
 
     #[arg(long, num_args(0..), value_parser = parse_rendering_instructions)]
-    border: Vec<HashMap<String, torn_territories::RenderInstruction>>,
+    border: Vec<HashMap<TerritoryId, torn_territories::RenderInstruction>>,
 
     territory: torn_territories::TerritoryId,
 }
 
 fn parse_rendering_instructions(
     s: &str,
-) -> Result<HashMap<String, torn_territories::RenderInstruction>, String> {
+) -> Result<HashMap<TerritoryId, torn_territories::RenderInstruction>, String> {
     let (colour, rest) = s
         .split_once(':')
         .ok_or("invalid rendering instruction. Expected <colour>:<opacity>:<territory ids>")?;
 
-    let colour = if colour.starts_with('#') {
-        if colour.len() != 7 {
-            return Err(format!("invalid hex colour '{colour}'"));
-        }
-
-        let r = u8::from_str_radix(&colour[1..=2], 16)
-            .map_err(|why| format!("invalid hex colour '{colour}': {why}"))?;
-        let g = u8::from_str_radix(&colour[3..=4], 16)
-            .map_err(|why| format!("invalid hex colour '{colour}': {why}"))?;
-        let b = u8::from_str_radix(&colour[5..=6], 16)
-            .map_err(|why| format!("invalid hex colour '{colour}': {why}"))?;
-
-        usvg::Color::new_rgb(r, g, b)
-    } else {
-        return Err(format!("invalid colour format '{colour}'"));
-    };
-
+    let colour = torn_territories::colour_from_hex(colour).ok_or("invalid colour")?;
     let (opacity, terts) = rest
         .split_once(':')
         .ok_or("invalid rendering instruction. Expected <colour>:<opacity>:<territory ids>")?;
@@ -121,9 +105,16 @@ fn parse_rendering_instructions(
 
     let inst = torn_territories::RenderInstruction { colour, opacity };
 
-    Ok(HashMap::from_iter(
-        terts.split(',').map(|id| (id.to_owned(), inst.clone())),
-    ))
+    let mut res = HashMap::new();
+    for id in terts.split(',') {
+        res.insert(
+            id.parse()
+                .map_err(|why: TerritoryIdError| why.to_string())?,
+            inst.clone(),
+        );
+    }
+
+    Ok(res)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
@@ -154,17 +145,16 @@ fn load_territory_view(args: TerritoryViewArgs) -> DynamicImage {
 
     let fitted_box = fit_view_box(bbox);
 
-    let shapes = torn_territories::render_territories(
-        fitted_box,
-        HashMap::from([(
-            args.territory,
-            torn_territories::RenderInstruction {
-                colour: usvg::Color::new_rgb(255, 0, 0),
-                opacity: 0.5,
-            },
-        )]),
-        HashMap::new(),
-    );
+    let fill = args.fill.into_iter().fold(HashMap::new(), |mut acc, f| {
+        acc.extend(f);
+        acc
+    });
+    let stroke = args.border.into_iter().fold(HashMap::new(), |mut acc, f| {
+        acc.extend(f);
+        acc
+    });
+
+    let shapes = torn_territories::render_territories(fitted_box, fill, stroke);
 
     DynamicImage::ImageRgba8(shapes)
 }
