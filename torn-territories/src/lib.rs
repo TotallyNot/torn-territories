@@ -122,53 +122,57 @@ impl serde::Serialize for TerritoryId {
 }
 
 #[cfg(feature = "sqlx")]
-impl<'d, DB> sqlx::Type<DB> for TerritoryId
+impl<DB> sqlx::Type<DB> for TerritoryId
 where
     DB: sqlx::Database,
-    &'d str: sqlx::Type<DB>,
+    String: sqlx::Type<DB>,
 {
     fn type_info() -> DB::TypeInfo {
-        <&str as sqlx::Type<DB>>::type_info()
+        <String as sqlx::Type<DB>>::type_info()
+    }
+
+    fn compatible(ty: &<DB as sqlx::Database>::TypeInfo) -> bool {
+        <String as sqlx::Type<DB>>::compatible(ty)
     }
 }
 
 #[cfg(feature = "sqlx")]
-impl<'r, DB> sqlx::Decode<'r, DB> for TerritoryId
+impl<DB> sqlx::Decode<'_, DB> for TerritoryId
 where
     DB: sqlx::Database,
-    &'r str: sqlx::Decode<'r, DB>,
+    String: for<'r> sqlx::Decode<'r, DB>,
 {
     fn decode(
-        value: <DB as sqlx::database::HasValueRef<'r>>::ValueRef,
+        value: <DB as sqlx::database::HasValueRef<'_>>::ValueRef,
     ) -> Result<Self, sqlx::error::BoxDynError> {
-        let value = <&str as sqlx::Decode<'r, DB>>::decode(value)?;
+        let value = <String as sqlx::Decode<'_, DB>>::decode(value)?;
         Ok(value.parse()?)
     }
 }
 
 #[cfg(feature = "sqlx")]
-impl<'q, DB> sqlx::Encode<'q, DB> for TerritoryId
+impl<DB> sqlx::Encode<'_, DB> for TerritoryId
 where
     DB: sqlx::Database,
-    String: sqlx::Encode<'q, DB>,
+    String: for<'q> sqlx::Encode<'q, DB>,
 {
     fn encode_by_ref(
         &self,
-        buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+        buf: &mut <DB as sqlx::database::HasArguments<'_>>::ArgumentBuffer,
     ) -> sqlx::encode::IsNull {
         let value = self.to_string();
-        <String as sqlx::Encode<'q, DB>>::encode(value, buf)
+        <String as sqlx::Encode<'_, DB>>::encode(value, buf)
     }
 
     fn encode(
         self,
-        buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+        buf: &mut <DB as sqlx::database::HasArguments<'_>>::ArgumentBuffer,
     ) -> sqlx::encode::IsNull
     where
         Self: Sized,
     {
         let value = self.to_string();
-        <String as sqlx::Encode<'q, DB>>::encode(value, buf)
+        <String as sqlx::Encode<'_, DB>>::encode(value, buf)
     }
 }
 
