@@ -122,9 +122,53 @@ impl serde::Serialize for TerritoryId {
 }
 
 #[cfg(feature = "sqlx")]
-impl sqlx::Type<sqlx::Postgres> for TerritoryId {
-    fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
-        <String as sqlx::Type<sqlx::Postgres>>::type_info()
+impl<'d, DB> sqlx::Type<DB> for TerritoryId
+where
+    DB: sqlx::Database,
+    &'d str: sqlx::Type<DB>,
+{
+    fn type_info() -> DB::TypeInfo {
+        <&str as sqlx::Type<DB>>::type_info()
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<'r, DB> sqlx::Decode<'r, DB> for TerritoryId
+where
+    DB: sqlx::Database,
+    &'r str: sqlx::Decode<'r, DB>,
+{
+    fn decode(
+        value: <DB as sqlx::database::HasValueRef<'r>>::ValueRef,
+    ) -> Result<Self, sqlx::error::BoxDynError> {
+        let value = <&str as sqlx::Decode<'r, DB>>::decode(value)?;
+        Ok(value.parse()?)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<'q, DB> sqlx::Encode<'q, DB> for TerritoryId
+where
+    DB: sqlx::Database,
+    String: sqlx::Encode<'q, DB>,
+{
+    fn encode_by_ref(
+        &self,
+        buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+    ) -> sqlx::encode::IsNull {
+        let value = self.to_string();
+        <String as sqlx::Encode<'q, DB>>::encode(value, buf)
+    }
+
+    fn encode(
+        self,
+        buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+    ) -> sqlx::encode::IsNull
+    where
+        Self: Sized,
+    {
+        let value = self.to_string();
+        <String as sqlx::Encode<'q, DB>>::encode(value, buf)
     }
 }
 

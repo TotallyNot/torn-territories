@@ -17,7 +17,7 @@ resvg = { version = "0.35.0", default-features = false }
 rust-embed = { version = "6.8.1", features = ["include-exclude"] }
 svgtypes = "0.11.0"
 serde = { version = "1", optional = true, default-features = false }
-sqlx = { version = "0.7", optional = true, default-features = false, features = ["postgres"] }
+sqlx = { version = "0.7", optional = true, default-features = false }
 
 [build-dependencies]
 phf = "0.11.1"
