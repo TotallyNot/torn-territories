@@ -176,6 +176,61 @@ where
     }
 }
 
+#[cfg(feature = "sea-orm")]
+impl From<TerritoryId> for sea_orm::Value {
+    fn from(value: TerritoryId) -> Self {
+        Self::String(Some(value.to_string().into()))
+    }
+}
+
+#[cfg(feature = "sea-orm")]
+impl sea_orm::TryGetable for TerritoryId {
+    fn try_get_by<I: sea_orm::ColIdx>(
+        res: &sea_orm::QueryResult,
+        index: I,
+    ) -> Result<Self, sea_orm::TryGetError> {
+        let value = String::try_get_by(res, index)?;
+        value.parse().map_err(|why| {
+            sea_orm::TryGetError::DbErr(sea_orm::DbErr::TryIntoErr {
+                from: "String",
+                into: "TerritoryId",
+                source: Box::new(why),
+            })
+        })
+    }
+}
+
+#[cfg(feature = "sea-orm")]
+impl sea_orm::sea_query::ValueType for TerritoryId {
+    fn try_from(v: sea_orm::Value) -> Result<Self, sea_orm::sea_query::ValueTypeErr> {
+        match v {
+            sea_orm::Value::String(Some(value)) => value
+                .parse()
+                .map_err(|_why| sea_orm::sea_query::ValueTypeErr),
+            _ => Err(sea_orm::sea_query::ValueTypeErr),
+        }
+    }
+
+    fn type_name() -> String {
+        stringify!(TerritoryId).to_owned()
+    }
+
+    fn array_type() -> sea_orm::sea_query::ArrayType {
+        sea_orm::sea_query::ArrayType::String
+    }
+
+    fn column_type() -> sea_orm::ColumnType {
+        sea_orm::ColumnType::Char(Some(3))
+    }
+}
+
+#[cfg(feature = "sea-orm")]
+impl sea_orm::sea_query::Nullable for TerritoryId {
+    fn null() -> sea_orm::Value {
+        sea_orm::Value::String(None)
+    }
+}
+
 impl TerritoryId {
     pub fn info(&self) -> &TerritoryInfo {
         TERRITORY_INFO.get(self).unwrap()
