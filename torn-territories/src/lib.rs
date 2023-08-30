@@ -3,7 +3,7 @@ use std::{collections::HashMap, io::Cursor, ops::Deref, rc::Rc};
 use image::{
     buffer::ConvertBuffer,
     codecs::tiff::TiffDecoder,
-    imageops::{overlay, replace},
+    imageops::{crop, overlay, replace},
     ColorType, GenericImageView, GrayImage, ImageDecoder,
 };
 use resvg::usvg::{self, NodeExt, Rect};
@@ -87,27 +87,40 @@ impl<'de> serde::Deserialize<'de> for TerritoryId {
     where
         D: serde::Deserializer<'de>,
     {
-        let id_string: &str = serde::Deserialize::deserialize(deserializer)?;
+        struct IdVisitor;
+        impl<'de> serde::de::Visitor<'de> for IdVisitor {
+            type Value = TerritoryId;
 
-        if !id_string.is_ascii() || id_string.as_bytes().len() != 3 {
-            return Err(serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(id_string),
-                &"A valid three letter territory ID",
-            ));
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "struct TerritoryId")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if !v.is_ascii() || v.as_bytes().len() != 3 {
+                    return Err(serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Str(v),
+                        &"A valid three letter territory ID",
+                    ));
+                }
+
+                let mut id_bytes = [0; 3];
+                id_bytes.copy_from_slice(v.as_bytes());
+
+                let id = TerritoryId(id_bytes);
+                if !TERRITORY_INFO.contains_key(&id) {
+                    return Err(serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Str(v),
+                        &"A valid three letter territory ID",
+                    ));
+                }
+                Ok(id)
+            }
         }
 
-        let mut id_bytes = [0; 3];
-        id_bytes.copy_from_slice(id_string.as_bytes());
-
-        let id = Self(id_bytes);
-        if !TERRITORY_INFO.contains_key(&id) {
-            return Err(serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(id_string),
-                &"A valid three letter territory ID",
-            ));
-        }
-
-        Ok(id)
+        deserializer.deserialize_str(IdVisitor)
     }
 }
 
@@ -249,6 +262,12 @@ include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
 
 pub const MAP_WIDTH: u32 = 6_256;
 pub const MAP_HEIGHT: u32 = 3_648;
+pub const MAP_BBOX: image::math::Rect = image::math::Rect {
+    x: 0,
+    y: 0,
+    width: MAP_WIDTH,
+    height: MAP_HEIGHT,
+};
 const TILE_WIDTH: u32 = 600;
 const TILE_HEIGHT: u32 = 400;
 
@@ -367,10 +386,17 @@ pub struct RenderInstruction {
     pub opacity: f32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum RenderScale {
+    X1,
+    X4,
+}
+
 pub fn render_territories(
     view_port: image::math::Rect,
     fill: HashMap<TerritoryId, RenderInstruction>,
     mut stroke: HashMap<TerritoryId, RenderInstruction>,
+    scale: RenderScale,
 ) -> image::RgbaImage {
     let root = usvg::Node::new(usvg::NodeKind::Group(usvg::Group {
         id: "".to_owned(),
@@ -421,8 +447,16 @@ pub fn render_territories(
         root.append_kind(usvg::NodeKind::Path(path));
     }
 
+    let scale_factor = match scale {
+        RenderScale::X1 => 1,
+        RenderScale::X4 => 4,
+    };
+
+    let scaled_width = view_port.width / scale_factor;
+    let scaled_height = view_port.height / scale_factor;
+
     let tree = resvg::Tree::from_usvg(&usvg::Tree {
-        size: usvg::Size::from_wh(view_port.width as f32, view_port.height as f32).unwrap(),
+        size: usvg::Size::from_wh(scaled_width as f32, scaled_height as f32).unwrap(),
         view_box: usvg::ViewBox {
             rect: usvg::NonZeroRect::from_xywh(
                 view_port.x as f32,
@@ -436,16 +470,27 @@ pub fn render_territories(
         root,
     });
 
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(view_port.width, view_port.height).unwrap();
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(scaled_width, scaled_height).unwrap();
     tree.render(
         resvg::tiny_skia::Transform::identity(),
         &mut pixmap.as_mut(),
     );
 
-    let shapes =
-        image::RgbaImage::from_raw(view_port.width, view_port.height, pixmap.take()).unwrap();
-    let mut background =
-        load_map_segment(view_port.x, view_port.y, view_port.width, view_port.height).convert();
+    let shapes = image::RgbaImage::from_raw(scaled_width, scaled_height, pixmap.take()).unwrap();
+    let mut background = match scale {
+        RenderScale::X1 => {
+            load_map_segment(view_port.x, view_port.y, view_port.width, view_port.height).convert()
+        }
+        RenderScale::X4 => crop(
+            &mut load_map_x4(),
+            view_port.x / 4,
+            view_port.y / 4,
+            scaled_width,
+            scaled_height,
+        )
+        .to_image()
+        .convert(),
+    };
 
     overlay(&mut background, &shapes, 0, 0);
 
@@ -491,6 +536,18 @@ pub fn load_map_segment(x: u32, y: u32, w: u32, h: u32) -> GrayImage {
     image
 }
 
+pub fn load_map_x4() -> GrayImage {
+    let img = MapTiles::get("map_x4.tiff").unwrap();
+
+    let decoder = TiffDecoder::new(Cursor::new(img.data)).unwrap();
+    assert!(decoder.color_type() == ColorType::L8);
+    let mut buf = vec![0; decoder.total_bytes() as usize];
+    let (d_x, d_y) = decoder.dimensions();
+    decoder.read_image(&mut buf).unwrap();
+
+    GrayImage::from_raw(d_x, d_y, buf).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,5 +555,14 @@ mod tests {
     #[test]
     fn test_id() {
         let _id: TerritoryId = "XOD".parse().unwrap();
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_json_value() {
+        use std::str::FromStr;
+
+        let value = serde_json::to_value(TerritoryId::from_str("GVE").unwrap()).unwrap();
+        let _id: TerritoryId = serde_json::from_value(value).unwrap();
     }
 }

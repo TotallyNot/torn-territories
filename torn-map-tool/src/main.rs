@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::Write};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use image::{codecs::png::PngEncoder, DynamicImage, GenericImageView, ImageEncoder, ImageFormat};
-use torn_territories::{fit_view_box, TerritoryId, TerritoryIdError};
+use torn_territories::{fit_view_box, RenderScale, TerritoryId, TerritoryIdError};
 
 #[derive(Parser)]
 #[command(author, about, version)]
@@ -67,6 +67,9 @@ struct Y2Spec {
 
 #[derive(Args)]
 struct TerritoryViewArgs {
+    #[arg(long, default_value_t = false)]
+    whole_map: bool,
+
     #[arg(short, long, default_value_t = 1f32)]
     factor: f32,
 
@@ -141,9 +144,15 @@ fn load_map_segment(args: MapSegmentArgs) -> DynamicImage {
 fn load_territory_view(args: TerritoryViewArgs) -> DynamicImage {
     let path = torn_territories::path_for_territory(args.territory)
         .unwrap_or_else(|| panic!("Territory with id '{}' does not exist!", args.territory));
-    let bbox = torn_territories::bbox_for_path(&path, args.factor, args.aspect_ratio);
-
-    let fitted_box = fit_view_box(bbox);
+    let bbox = if args.whole_map {
+        torn_territories::MAP_BBOX
+    } else {
+        fit_view_box(torn_territories::bbox_for_path(
+            &path,
+            args.factor,
+            args.aspect_ratio,
+        ))
+    };
 
     let fill = args.fill.into_iter().fold(HashMap::new(), |mut acc, f| {
         acc.extend(f);
@@ -154,7 +163,16 @@ fn load_territory_view(args: TerritoryViewArgs) -> DynamicImage {
         acc
     });
 
-    let shapes = torn_territories::render_territories(fitted_box, fill, stroke);
+    let shapes = torn_territories::render_territories(
+        bbox,
+        fill,
+        stroke,
+        if args.whole_map {
+            RenderScale::X4
+        } else {
+            RenderScale::X1
+        },
+    );
 
     DynamicImage::ImageRgba8(shapes)
 }
